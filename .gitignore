@@ -1,0 +1,48 @@
+# Node
+node_modules/
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Env and secrets
+.env
+.env.*
+
+# Logs
+logs/
+*.log
+
+# Build outputs
+dist/
+build/
+.turbo/
+
+# Flutter / Dart
+**/pubspec.lock
+**/build/
+**/.dart_tool/
+**/.packages
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+**/.fvm/
+
+# Android
+**/android/.gradle/
+**/android/app/build/
+
+# iOS
+**/ios/Pods/
+**/ios/Runner.xcworkspace/
+**/ios/DerivedData/
+
+# IDE/editor
+.idea/
+.vscode/
+*.iml
+
+# Misc
+coverage/
+uploads/
+.DS_Store
+Thumbs.db
+

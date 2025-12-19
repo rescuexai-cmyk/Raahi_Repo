@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clear Raahi Storage</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            text-align: center;
+            max-width: 500px;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 28px;
+        }
+        p {
+            color: #666;
+            margin-bottom: 30px;
+            line-height: 1.6;
+        }
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 18px;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            font-weight: 600;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+        }
+        button:active {
+            transform: translateY(0);
+        }
+        .success {
+            background: #10b981;
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 20px;
+            display: none;
+            animation: slideIn 0.3s ease;
+        }
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        .storage-items {
+            text-align: left;
+            background: #f3f4f6;
+            padding: 20px;
+            border-radius: 10px;
+            margin-top: 20px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .storage-item {
+            padding: 5px 0;
+            color: #374151;
+            font-size: 14px;
+            font-family: 'Courier New', monospace;
+        }
+        .link {
+            display: inline-block;
+            margin-top: 20px;
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 600;
+        }
+        .link:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧹 Clear All Browser Storage</h1>
+        <p>Clear <strong>ALL</strong> cached data, cookies, localStorage, sessionStorage, and IndexedDB to test the app as a completely fresh user.</p>
+        
+        <div id="storageList" class="storage-items">
+            <strong>Current localStorage items:</strong>
+            <div id="items"></div>
+        </div>
+        
+        <button onclick="clearStorage()">🗑️ Clear EVERYTHING</button>
+        
+        <div id="success" class="success">
+            ✅ All storage cleared successfully!<br>
+            ✅ Cookies deleted<br>
+            ✅ Cache cleared<br>
+            ✅ IndexedDB cleared<br>
+            <strong>Now click below to start fresh:</strong><br>
+            <a href="http://localhost:3000" class="link" style="color: white; font-size: 18px; margin-top: 10px; display: inline-block;">🚀 Open Raahi App (Fresh)</a>
+        </div>
+        
+        <a href="http://localhost:3000" class="link">← Back to App</a>
+    </div>
+
+    <script>
+        function displayStorageItems() {
+            const itemsDiv = document.getElementById('items');
+            const items = [];
+            
+            // Show ALL localStorage items
+            const authKeys = ['accessToken', 'refreshToken', 'user'];
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key) {
+                    const value = localStorage.getItem(key);
+                    let preview = value ? value.substring(0, 50) + (value.length > 50 ? '...' : '') : '';
+                    
+                    // Highlight authentication-related keys
+                    const isAuthKey = authKeys.includes(key) || key.startsWith('raahi');
+                    const style = isAuthKey ? 'color: #ef4444; font-weight: bold;' : '';
+                    const prefix = isAuthKey ? '🔑 ' : '• ';
+                    
+                    items.push(`<div class="storage-item" style="${style}">${prefix}${key}: ${preview}</div>`);
+                }
+            }
+            
+            if (items.length === 0) {
+                itemsDiv.innerHTML = '<div class="storage-item" style="color: #10b981;">✓ No localStorage items found</div>';
+            } else {
+                itemsDiv.innerHTML = `<div style="margin-bottom: 10px; color: #ef4444; font-size: 12px;">🔑 = Authentication data (will cause auto-login)</div>` + items.join('');
+            }
+        }
+
+        function clearStorage() {
+            console.log('🧹 Starting comprehensive storage clear...');
+            
+            // 1. Clear ALL localStorage (not just raahi items)
+            const localStorageKeys = Object.keys(localStorage);
+            console.log('📦 localStorage items before clear:', localStorageKeys);
+            localStorage.clear();
+            
+            // 2. Clear ALL sessionStorage
+            console.log('📦 sessionStorage cleared');
+            sessionStorage.clear();
+            
+            // 3. Clear all cookies
+            const cookies = document.cookie.split(";");
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i];
+                const eqPos = cookie.indexOf("=");
+                const name = eqPos > -1 ? cookie.substr(0, eqPos) : cookie;
+                document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/";
+            }
+            console.log('🍪 All cookies cleared');
+            
+            // 4. Clear IndexedDB (if exists)
+            if (window.indexedDB) {
+                indexedDB.databases().then((dbs) => {
+                    dbs.forEach(db => {
+                        if (db.name) {
+                            indexedDB.deleteDatabase(db.name);
+                            console.log('🗄️ Deleted IndexedDB:', db.name);
+                        }
+                    });
+                }).catch(e => console.log('IndexedDB clear skipped:', e));
+            }
+            
+            // 5. Clear Cache Storage
+            if ('caches' in window) {
+                caches.keys().then(names => {
+                    names.forEach(name => {
+                        caches.delete(name);
+                        console.log('💾 Deleted cache:', name);
+                    });
+                });
+            }
+            
+            // Show success message
+            document.getElementById('success').style.display = 'block';
+            
+            // Update the display
+            displayStorageItems();
+            
+            console.log('✅ Complete storage clear finished!');
+            console.log('🔄 Please refresh the page or click "Open Raahi App" to start fresh');
+        }
+
+        // Display items on load
+        displayStorageItems();
+    </script>
+</body>
+</html>
+

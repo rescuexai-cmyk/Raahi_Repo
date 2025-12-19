@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Auto Clear & Redirect</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            text-align: center;
+            max-width: 500px;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 28px;
+        }
+        .status {
+            font-size: 48px;
+            margin: 20px 0;
+        }
+        .message {
+            color: #666;
+            margin: 10px 0;
+            line-height: 1.6;
+        }
+        .countdown {
+            font-size: 64px;
+            font-weight: bold;
+            color: #667eea;
+            margin: 30px 0;
+        }
+        .progress {
+            width: 100%;
+            height: 8px;
+            background: #f0f0f0;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 20px 0;
+        }
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            width: 0%;
+            transition: width 0.1s linear;
+        }
+        .log {
+            text-align: left;
+            background: #f8f8f8;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 20px 0;
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+        }
+        .log-item {
+            padding: 3px 0;
+            color: #444;
+        }
+        .log-item.success {
+            color: #10b981;
+        }
+        .log-item.error {
+            color: #ef4444;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 id="title">🧹 Auto-Clearing Storage</h1>
+        <div class="status" id="status">⏳</div>
+        <div class="message" id="message">Please wait...</div>
+        <div class="countdown" id="countdown"></div>
+        <div class="progress">
+            <div class="progress-bar" id="progressBar"></div>
+        </div>
+        <div class="log" id="log"></div>
+    </div>
+
+    <script>
+        const logEl = document.getElementById('log');
+        const statusEl = document.getElementById('status');
+        const messageEl = document.getElementById('message');
+        const countdownEl = document.getElementById('countdown');
+        const titleEl = document.getElementById('title');
+        const progressBar = document.getElementById('progressBar');
+
+        function addLog(message, type = 'normal') {
+            const div = document.createElement('div');
+            div.className = `log-item ${type}`;
+            div.textContent = message;
+            logEl.appendChild(div);
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        async function clearEverything() {
+            let progress = 0;
+            const updateProgress = (value) => {
+                progress = value;
+                progressBar.style.width = `${value}%`;
+            };
+
+            try {
+                // Step 1: Clear localStorage
+                addLog('📦 Clearing localStorage...', 'normal');
+                const lsKeys = Object.keys(localStorage);
+                addLog(`   Found ${lsKeys.length} items: ${lsKeys.join(', ')}`, 'normal');
+                localStorage.clear();
+                addLog('   ✅ localStorage cleared', 'success');
+                updateProgress(25);
+
+                await new Promise(r => setTimeout(r, 300));
+
+                // Step 2: Clear sessionStorage
+                addLog('📦 Clearing sessionStorage...', 'normal');
+                sessionStorage.clear();
+                addLog('   ✅ sessionStorage cleared', 'success');
+                updateProgress(40);
+
+                await new Promise(r => setTimeout(r, 300));
+
+                // Step 3: Clear cookies
+                addLog('🍪 Clearing cookies...', 'normal');
+                const cookies = document.cookie.split(";");
+                let cookieCount = 0;
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i];
+                    const eqPos = cookie.indexOf("=");
+                    const name = eqPos > -1 ? cookie.substr(0, eqPos).trim() : cookie.trim();
+                    if (name) {
+                        document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/";
+                        cookieCount++;
+                    }
+                }
+                addLog(`   ✅ ${cookieCount} cookies cleared`, 'success');
+                updateProgress(60);
+
+                await new Promise(r => setTimeout(r, 300));
+
+                // Step 4: Clear IndexedDB
+                addLog('🗄️ Clearing IndexedDB...', 'normal');
+                if (window.indexedDB) {
+                    try {
+                        const dbs = await indexedDB.databases();
+                        for (const db of dbs) {
+                            if (db.name) {
+                                indexedDB.deleteDatabase(db.name);
+                                addLog(`   ✅ Deleted: ${db.name}`, 'success');
+                            }
+                        }
+                    } catch (e) {
+                        addLog(`   ⚠️ IndexedDB: ${e.message}`, 'normal');
+                    }
+                }
+                updateProgress(80);
+
+                await new Promise(r => setTimeout(r, 300));
+
+                // Step 5: Clear Cache Storage
+                addLog('💾 Clearing cache...', 'normal');
+                if ('caches' in window) {
+                    const names = await caches.keys();
+                    await Promise.all(names.map(name => {
+                        caches.delete(name);
+                        addLog(`   ✅ Deleted cache: ${name}`, 'success');
+                        return Promise.resolve();
+                    }));
+                }
+                updateProgress(100);
+
+                await new Promise(r => setTimeout(r, 500));
+
+                // Success!
+                statusEl.textContent = '✅';
+                titleEl.textContent = '✅ All Storage Cleared!';
+                messageEl.textContent = 'Redirecting to Raahi app in...';
+                addLog('🎉 Complete! Redirecting to fresh app...', 'success');
+
+                // Countdown
+                let count = 3;
+                countdownEl.textContent = count;
+                const countdown = setInterval(() => {
+                    count--;
+                    if (count > 0) {
+                        countdownEl.textContent = count;
+                    } else {
+                        clearInterval(countdown);
+                        countdownEl.textContent = '🚀';
+                        window.location.href = 'http://localhost:3000';
+                    }
+                }, 1000);
+
+            } catch (error) {
+                statusEl.textContent = '❌';
+                messageEl.textContent = 'Error occurred!';
+                addLog(`❌ Error: ${error.message}`, 'error');
+                console.error('Clear error:', error);
+            }
+        }
+
+        // Auto-start
+        addLog('🧹 Starting auto-clear process...', 'normal');
+        setTimeout(clearEverything, 500);
+    </script>
+</body>
+</html>
+
+
+
