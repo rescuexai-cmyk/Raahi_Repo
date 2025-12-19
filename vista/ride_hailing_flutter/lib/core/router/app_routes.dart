@@ -15,6 +15,7 @@ class AppRoutes {
   // Ride routes
   static const String rideDetails = '/ride/:rideId';
   static const String rideTracking = '/ride/:rideId/tracking';
+  static const String rideChat = '/ride/:rideId/chat';
   static const String rideBooking = '/booking';
 
   // Driver routes
@@ -32,6 +33,7 @@ class AppRoutes {
   // Helper methods for dynamic routes
   static String rideDetailsPath(String rideId) => '/ride/$rideId';
   static String rideTrackingPath(String rideId) => '/ride/$rideId/tracking';
+  static String rideChatPath(String rideId) => '/ride/$rideId/chat';
 }
 
 

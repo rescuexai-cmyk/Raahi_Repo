@@ -397,7 +397,7 @@ class _RideBookingCardState extends State<RideBookingCard> with SingleTickerProv
     final fareEstimate = _fareEstimates[rideType.id];
 
     return GestureDetector(
-      onTap: rideType.available ? () => setState(() => _selectedRideType = rideType.id) : null,
+      onTap: () => setState(() => _selectedRideType = rideType.id),
       child: Container(
         margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.all(16),
@@ -406,87 +406,87 @@ class _RideBookingCardState extends State<RideBookingCard> with SingleTickerProv
           border: Border.all(color: isSelected ? AppColors.secondary : AppColors.border, width: isSelected ? 2 : 1),
           borderRadius: BorderRadius.circular(12),
         ),
-        child: Opacity(
-          opacity: rideType.available ? 1 : 0.5,
-          child: Row(
-            children: [
-              Stack(
-                children: [
-                  Container(
-                    width: 48, height: 48,
-                    decoration: BoxDecoration(color: AppColors.inputBackground, borderRadius: BorderRadius.circular(24)),
-                    child: Icon(rideType.icon, size: 28, color: isSelected ? AppColors.secondary : AppColors.textSecondary),
-                  ),
-                  if (rideType.availableDrivers > 0)
-                    Positioned(
-                      top: -4, right: -4,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(color: AppColors.primary, borderRadius: BorderRadius.circular(10)),
-                        child: Text('${rideType.availableDrivers}', style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w600)),
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Text(rideType.name, style: TextStyle(fontWeight: FontWeight.w600, color: isSelected ? AppColors.secondary : AppColors.textPrimary)),
-                        if (rideType.isFastest) ...[
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(color: AppColors.primary, borderRadius: BorderRadius.circular(4)),
-                            child: const Text('FASTEST', style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w700)),
-                          ),
-                        ],
-                        const Spacer(),
-                        if (rideType.averageRating != null)
-                          Row(
-                            children: [
-                              const Icon(Icons.star, size: 12, color: AppColors.starYellow),
-                              const SizedBox(width: 2),
-                              Text(rideType.averageRating!.toStringAsFixed(1), style: Theme.of(context).textTheme.bodySmall),
-                            ],
-                          ),
-                      ],
-                    ),
-                    Text(rideType.description, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.textSecondary)),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Text('${rideType.capacity} seats', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.textHint)),
-                        if (rideType.available && rideType.eta > 0) ...[
-                          const Text(' • ', style: TextStyle(color: AppColors.textHint)),
-                          Text(_formatETA(rideType.eta), style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.secondary, fontWeight: FontWeight.w500)),
-                        ],
-                      ],
-                    ),
-                  ],
+        child: Row(
+          children: [
+            Stack(
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(color: AppColors.inputBackground, borderRadius: BorderRadius.circular(24)),
+                  child: Icon(rideType.icon, size: 28, color: isSelected ? AppColors.secondary : AppColors.textSecondary),
                 ),
-              ),
-              const SizedBox(width: 16),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
+                if (rideType.availableDrivers > 0)
+                  Positioned(
+                    top: -4,
+                    right: -4,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(color: AppColors.primary, borderRadius: BorderRadius.circular(10)),
+                      child: Text('${rideType.availableDrivers}', style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w600)),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (_isLoading)
-                    Text('...', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.textHint))
-                  else if (fareEstimate != null)
-                    Text(_formatPrice(fareEstimate.total), style: TextStyle(fontWeight: FontWeight.w600, color: isSelected ? AppColors.secondary : AppColors.textPrimary))
-                  else
-                    Text('N/A', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.textHint)),
-                  Text(
-                    rideType.available ? '${rideType.availableDrivers} available' : 'No drivers',
-                    style: TextStyle(fontSize: 12, color: rideType.available ? AppColors.success : AppColors.error),
+                  Row(
+                    children: [
+                      Text(rideType.name, style: TextStyle(fontWeight: FontWeight.w600, color: isSelected ? AppColors.secondary : AppColors.textPrimary)),
+                      if (rideType.isFastest) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(color: AppColors.primary, borderRadius: BorderRadius.circular(4)),
+                          child: const Text('FASTEST', style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w700)),
+                        ),
+                      ],
+                      const Spacer(),
+                      if (rideType.averageRating != null)
+                        Row(
+                          children: [
+                            const Icon(Icons.star, size: 12, color: AppColors.starYellow),
+                            const SizedBox(width: 2),
+                            Text(rideType.averageRating!.toStringAsFixed(1), style: Theme.of(context).textTheme.bodySmall),
+                          ],
+                        ),
+                    ],
+                  ),
+                  Text(rideType.description, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.textSecondary)),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Text('${rideType.capacity} seats', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.textHint)),
+                      if (rideType.eta > 0) ...[
+                        const Text(' • ', style: TextStyle(color: AppColors.textHint)),
+                        Text(_formatETA(rideType.eta), style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.secondary, fontWeight: FontWeight.w500)),
+                      ],
+                    ],
                   ),
                 ],
               ),
-            ],
-          ),
+            ),
+            const SizedBox(width: 16),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                if (_isLoading)
+                  Text('...', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.textHint))
+                else if (fareEstimate != null)
+                  Text(_formatPrice(fareEstimate.total), style: TextStyle(fontWeight: FontWeight.w600, color: isSelected ? AppColors.secondary : AppColors.textPrimary))
+                else
+                  Text('N/A', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.textHint)),
+                if (rideType.available)
+                  Text(
+                    '${rideType.availableDrivers} available',
+                    style: const TextStyle(fontSize: 12, color: AppColors.success),
+                  ),
+              ],
+            ),
+          ],
         ),
       ),
     );

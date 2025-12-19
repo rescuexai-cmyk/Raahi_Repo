@@ -27,21 +27,49 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
+    
+    final phone = _phoneController.text;
 
     try {
       final authNotifier = ref.read(authStateProvider.notifier);
-      final result = await authNotifier.requestOTP(_phoneController.text);
+      final result = await authNotifier.requestOTP(phone);
+
+      debugPrint('🔐 OTP Result: success=${result.success}, sessionId=${result.sessionId}, error=${result.error}');
+
+      if (!mounted) {
+        debugPrint('❌ Widget not mounted after OTP request');
+        return;
+      }
+      
+      setState(() => _isLoading = false);
+
+      if (result.success) {
+        debugPrint('✅ OTP success! Navigating to OTP screen');
+        // Use go instead of push to avoid router rebuild issues
+        context.go('${AppRoutes.otpVerification}?phone=$phone&isNewUser=${result.isNewUser}');
+      } else {
+        debugPrint('❌ OTP request failed: ${result.error}');
+        _showError(result.error ?? 'Failed to send OTP');
+      }
+    } catch (e) {
+      debugPrint('💥 Exception in _handleLogin: $e');
+      if (mounted) {
+        setState(() => _isLoading = false);
+        _showError(e.toString());
+      }
+    }
+  }
+
+  Future<void> _handleDemoLogin() async {
+    setState(() => _isLoading = true);
+
+    try {
+      final authNotifier = ref.read(authStateProvider.notifier);
+      await authNotifier.demoLogin();
 
       if (mounted) {
         setState(() => _isLoading = false);
-
-        if (result.success) {
-          context.push(
-            '${AppRoutes.otpVerification}?phone=${_phoneController.text}&isNewUser=false',
-          );
-        } else {
-          _showError(result.error ?? 'Failed to send OTP');
-        }
+        context.go(AppRoutes.home);
       }
     } catch (e) {
       if (mounted) {
@@ -179,19 +207,26 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 ),
                 const SizedBox(height: 24),
 
+                // Demo Login button
+                ElevatedButton.icon(
+                  onPressed: _isLoading ? null : _handleDemoLogin,
+                  icon: const Icon(Icons.play_arrow),
+                  label: const Text('Demo Login (Skip OTP)'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.secondary,
+                    foregroundColor: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 16),
+
                 // Google sign in
                 OutlinedButton.icon(
                   onPressed: () {
                     // TODO: Implement Google sign in
                   },
-                  icon: Image.network(
-                    'https://www.google.com/favicon.ico',
-                    width: 20,
-                    height: 20,
-                    errorBuilder: (_, __, ___) => const Icon(
-                      Icons.g_mobiledata,
-                      color: AppColors.googleRed,
-                    ),
+                  icon: const Icon(
+                    Icons.g_mobiledata,
+                    color: AppColors.googleRed,
                   ),
                   label: const Text('Continue with Google'),
                   style: OutlinedButton.styleFrom(

@@ -11,8 +11,11 @@ import '../../../../core/services/api_client.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/router/app_routes.dart';
 import '../../../auth/providers/auth_provider.dart';
+import '../../../ride/providers/ride_state_provider.dart';
+import '../../../ride/presentation/widgets/ride_status_banner.dart';
 import '../widgets/custom_map_view.dart';
 import '../widgets/ride_booking_card.dart';
+import '../widgets/ride_searching_sheet.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -144,89 +147,57 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       return;
     }
 
-    // Show confirmation dialog
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('🚗 Confirm Your Ride'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('📍 Pickup: $_pickupAddress'),
-            const SizedBox(height: 8),
-            Text('📍 Destination: $_destinationAddress'),
-            const SizedBox(height: 16),
-            Text('🚙 Vehicle: $rideType'),
-            Text('💰 Fare: ₹${fareEstimate.total.round()}'),
-            Text('📏 Distance: ${fareEstimate.estimatedDistance.toStringAsFixed(1)}km'),
-            Text('⏱️ Duration: ${fareEstimate.estimatedDuration.round()} min'),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('🚗 Book Now'),
-          ),
-        ],
-      ),
+    // Start searching using the global ride state provider
+    await ref.read(rideStateProvider.notifier).startSearching(
+      pickupLocation: _pickupLocation!,
+      destinationLocation: _destinationLocation!,
+      pickupAddress: _pickupAddress,
+      destinationAddress: _destinationAddress,
+      rideType: rideType,
+      fare: fareEstimate.total,
+      distance: fareEstimate.estimatedDistance,
+      duration: fareEstimate.estimatedDuration.round(),
     );
 
-    if (confirmed == true) {
-      _processRideBooking(rideType, fareEstimate);
-    }
+    setState(() {
+      _showBookingCard = false;
+    });
   }
 
-  Future<void> _processRideBooking(String rideType, FareEstimate fareEstimate) async {
-    try {
-      final user = ref.read(currentUserProvider);
-      
-      // Show searching dialog
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => const AlertDialog(
-          content: Row(
-            children: [
-              CircularProgressIndicator(),
-              SizedBox(width: 16),
-              Text('Finding the best driver...'),
-            ],
-          ),
-        ),
-      );
+  void _cancelRideSearch() {
+    ref.read(rideStateProvider.notifier).cancelRide();
+    setState(() {
+      _showBookingCard = true; // Show booking card again so user can rebook
+    });
+    _showSuccess('Ride request cancelled');
+  }
 
-      final result = await apiClient.createRideRequest({
-        'userId': user?.id,
-        'pickupLocation': _pickupLocation!.toJson(),
-        'destinationLocation': _destinationLocation!.toJson(),
-        'pickupAddress': _pickupAddress,
-        'destinationAddress': _destinationAddress,
-        'rideType': rideType,
-        'fare': fareEstimate.total.round(),
-        'distance': fareEstimate.estimatedDistance,
-        'duration': fareEstimate.estimatedDuration.round(),
+  void _onDriverFound(String driverId) {
+    // This will only be called when a real driver accepts from the backend
+    _showSuccess('Driver found! Starting your trip...');
+    
+    // Navigate to ride tracking with the driver ID
+    context.push(AppRoutes.rideTrackingPath(driverId));
+  }
+  
+  void _onRideBannerTap() {
+    final rideState = ref.read(rideStateProvider);
+    debugPrint('🔔 Banner tapped! Status: ${rideState.status}, RideId: ${rideState.rideId}');
+    
+    if (rideState.isSearching) {
+      // Already on home screen, just make sure booking card is hidden
+      setState(() {
+        _showBookingCard = false;
       });
-
-      if (mounted) Navigator.pop(context); // Close searching dialog
-
-      if (result['success'] == true) {
-        final requestId = result['requestId'] as String?;
-        if (requestId != null) {
-          _showSuccess('Driver found! Navigating to tracking...');
-          context.push(AppRoutes.rideTrackingPath(requestId));
-        }
-      } else {
-        _showError(result['message'] as String? ?? 'No drivers available');
-      }
-    } catch (e) {
-      if (mounted) Navigator.pop(context);
-      _showError('Unable to book ride. Please try again.');
-      debugPrint('Booking error: $e');
+    } else if (rideState.rideId != null && 
+               (rideState.status == ActiveRideStatus.driverFound ||
+                rideState.status == ActiveRideStatus.driverArriving ||
+                rideState.status == ActiveRideStatus.inProgress)) {
+      // Navigate to tracking screen for driver found, arriving, or in progress
+      debugPrint('🔔 Navigating to tracking screen: ${AppRoutes.rideTrackingPath(rideState.rideId!)}');
+      context.push(AppRoutes.rideTrackingPath(rideState.rideId!));
+    } else {
+      debugPrint('🔔 Cannot navigate: rideId=${rideState.rideId}, status=${rideState.status}');
     }
   }
 
@@ -285,6 +256,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final rideState = ref.watch(rideStateProvider);
+    final isSearching = rideState.isSearching;
+    
     return Scaffold(
       body: Stack(
         children: [
@@ -367,21 +341,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
 
           // Bottom action buttons
-          Positioned(
-            bottom: _showBookingCard ? MediaQuery.of(context).size.height * 0.4 : 100,
-            right: 20,
-            child: Column(
-              children: [
-                _buildCircleButton(
-                  _isLoadingDrivers ? Icons.refresh : Icons.directions_car,
-                  _loadNearbyDrivers,
-                  isLoading: _isLoadingDrivers,
-                ),
-                const SizedBox(height: 12),
-                _buildCircleButton(Icons.my_location, _getCurrentLocation, isLoading: _isLoadingLocation),
-              ],
+          if (!isSearching)
+            Positioned(
+              bottom: _showBookingCard ? MediaQuery.of(context).size.height * 0.4 : 100,
+              right: 20,
+              child: Column(
+                children: [
+                  _buildCircleButton(
+                    _isLoadingDrivers ? Icons.refresh : Icons.directions_car,
+                    _loadNearbyDrivers,
+                    isLoading: _isLoadingDrivers,
+                  ),
+                  const SizedBox(height: 12),
+                  _buildCircleButton(Icons.my_location, _getCurrentLocation, isLoading: _isLoadingLocation),
+                ],
+              ),
             ),
-          ),
 
           // Booking card
           Positioned(
@@ -389,7 +364,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             left: 0,
             right: 0,
             child: RideBookingCard(
-              isVisible: _showBookingCard,
+              isVisible: _showBookingCard && !isSearching,
               onClose: () => setState(() => _showBookingCard = false),
               onPickupSelect: _handlePickupSelect,
               onDestinationSelect: _handleDestinationSelect,
@@ -403,6 +378,48 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               isLoadingDrivers: _isLoadingDrivers,
             ),
           ),
+          
+          // Ride searching sheet
+          if (isSearching)
+            Positioned(
+              bottom: 0,
+              left: 0,
+              right: 0,
+              child: RideSearchingSheet(
+                pickupAddress: rideState.pickupAddress ?? _pickupAddress,
+                destinationAddress: rideState.destinationAddress ?? _destinationAddress,
+                pickupLocation: rideState.pickupLocation ?? _pickupLocation!,
+                destinationLocation: rideState.destinationLocation ?? _destinationLocation!,
+                rideType: rideState.rideType ?? 'economy',
+                fareEstimate: FareEstimate(
+                  rideType: rideState.rideType ?? 'economy',
+                  baseFare: 0,
+                  distanceFare: 0,
+                  timeFare: 0,
+                  subtotal: 0,
+                  taxes: 0,
+                  total: rideState.fare ?? 0,
+                  currency: 'INR',
+                  estimatedDistance: rideState.distance ?? 0,
+                  estimatedDuration: (rideState.duration ?? 0).toDouble(),
+                  distance: rideState.distance ?? 0,
+                  estimatedTime: (rideState.duration ?? 0).toDouble(),
+                ),
+                onCancel: _cancelRideSearch,
+                onDriverFound: _onDriverFound,
+              ),
+            ),
+            
+          // Show ride status banner when there's an active ride (not just searching on home)
+          if (rideState.isActive && !isSearching)
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 80,
+              left: 0,
+              right: 0,
+              child: RideStatusBanner(
+                onTap: _onRideBannerTap,
+              ),
+            ),
         ],
       ),
     );

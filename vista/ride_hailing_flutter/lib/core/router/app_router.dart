@@ -10,27 +10,44 @@ import '../../features/history/presentation/screens/history_screen.dart';
 import '../../features/profile/presentation/screens/profile_screen.dart';
 import '../../features/ride/presentation/screens/ride_details_screen.dart';
 import '../../features/ride/presentation/screens/ride_tracking_screen.dart';
+import '../../features/ride/presentation/screens/ride_chat_screen.dart';
+import '../../features/ride/providers/ride_state_provider.dart';
 import '../../features/driver/presentation/screens/driver_home_screen.dart';
 import '../widgets/main_scaffold.dart';
 import 'app_routes.dart';
 
-final appRouterProvider = Provider<GoRouter>((ref) {
+// Provider that only exposes whether the user is authenticated (to prevent unnecessary rebuilds)
+final isAuthenticatedProvider = Provider<bool>((ref) {
   final authState = ref.watch(authStateProvider);
+  return authState.user != null;
+});
+
+final appRouterProvider = Provider<GoRouter>((ref) {
+  // Only watch the authenticated status, not the entire auth state
+  // This prevents rebuilds when just isLoading changes
+  final isAuthenticated = ref.watch(isAuthenticatedProvider);
   
   return GoRouter(
     initialLocation: AppRoutes.login,
     debugLogDiagnostics: true,
     redirect: (context, state) {
-      final isAuthenticated = authState.user != null;
-      final isAuthRoute = state.matchedLocation == AppRoutes.login ||
-          state.matchedLocation == AppRoutes.signup ||
-          state.matchedLocation.startsWith(AppRoutes.otpVerification);
+      final currentLocation = state.matchedLocation;
+      
+      final isAuthRoute = currentLocation == AppRoutes.login ||
+          currentLocation == AppRoutes.signup ||
+          currentLocation.startsWith(AppRoutes.otpVerification);
 
+      debugPrint('🔀 Router redirect: location=$currentLocation, isAuthenticated=$isAuthenticated, isAuthRoute=$isAuthRoute');
+
+      // If not authenticated and trying to access protected routes, go to login
       if (!isAuthenticated && !isAuthRoute) {
+        debugPrint('🔀 Redirecting to login (not authenticated)');
         return AppRoutes.login;
       }
 
+      // If authenticated and on auth route, go to home
       if (isAuthenticated && isAuthRoute) {
+        debugPrint('🔀 Redirecting to home (already authenticated)');
         return AppRoutes.home;
       }
 
@@ -52,11 +69,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.otpVerification,
         name: 'otpVerification',
         builder: (context, state) {
-          final sessionId = state.uri.queryParameters['sessionId'] ?? '';
           final phone = state.uri.queryParameters['phone'] ?? '';
           final isNewUser = state.uri.queryParameters['isNewUser'] == 'true';
           return OTPVerificationScreen(
-            sessionId: sessionId,
             phone: phone,
             isNewUser: isNewUser,
           );
@@ -102,6 +117,22 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) {
           final rideId = state.pathParameters['rideId'] ?? '';
           return RideTrackingScreen(rideId: rideId);
+        },
+      ),
+      
+      // Ride chat
+      GoRoute(
+        path: AppRoutes.rideChat,
+        name: 'rideChat',
+        builder: (context, state) {
+          final rideId = state.pathParameters['rideId'] ?? '';
+          final driverName = state.uri.queryParameters['driverName'] ?? 'Driver';
+          final driverAvatarUrl = state.uri.queryParameters['driverAvatarUrl'];
+          return RideChatScreen(
+            rideId: rideId,
+            driverName: driverName,
+            driverAvatarUrl: driverAvatarUrl,
+          );
         },
       ),
       

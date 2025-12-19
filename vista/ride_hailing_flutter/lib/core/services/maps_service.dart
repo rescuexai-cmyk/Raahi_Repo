@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:math' as math;
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../config/app_config.dart';
 import '../models/location.dart';
@@ -34,7 +35,7 @@ class MapsService {
       }
       return null;
     } catch (e) {
-      print('Geocoding error: $e');
+      debugPrint('Geocoding error: $e');
       return null;
     }
   }
@@ -51,9 +52,10 @@ class MapsService {
         final result = (data['results'] as List).first as Map<String, dynamic>;
         return result['formatted_address'] as String;
       }
+      debugPrint('Reverse geocode status: ${data['status']}');
       return null;
     } catch (e) {
-      print('Reverse geocoding error: $e');
+      debugPrint('Reverse geocoding error: $e');
       return null;
     }
   }
@@ -96,9 +98,10 @@ class MapsService {
           steps: leg['steps'] as List<dynamic>,
         );
       }
+      debugPrint('Directions status: ${data['status']}');
       return null;
     } catch (e) {
-      print('Directions error: $e');
+      debugPrint('Directions error: $e');
       return null;
     }
   }
@@ -118,19 +121,33 @@ class MapsService {
       if (radius != null) {
         url += '&radius=$radius';
       }
-      url += '&types=address|establishment';
+      // Restrict to India for better results
+      url += '&components=country:in';
       
+      debugPrint('Places API request for: $input');
       final response = await http.get(Uri.parse(url));
       final data = json.decode(response.body) as Map<String, dynamic>;
       
+      debugPrint('Places API status: ${data['status']}');
+      
       if (data['status'] == 'OK') {
-        return (data['predictions'] as List)
+        final results = (data['predictions'] as List)
             .map((p) => PlaceSuggestion.fromJson(p as Map<String, dynamic>))
             .toList();
+        debugPrint('Found ${results.length} suggestions');
+        return results;
+      } else if (data['status'] == 'REQUEST_DENIED') {
+        debugPrint('Places API denied: ${data['error_message']}');
+        debugPrint('Make sure Places API is enabled in Google Cloud Console');
+      } else if (data['status'] == 'ZERO_RESULTS') {
+        debugPrint('No results found for: $input');
+      } else {
+        debugPrint('Places API error: ${data['status']} - ${data['error_message'] ?? 'Unknown'}');
       }
+      
       return [];
     } catch (e) {
-      print('Places suggestions error: $e');
+      debugPrint('Places suggestions error: $e');
       return [];
     }
   }
@@ -140,6 +157,7 @@ class MapsService {
     try {
       final url = '$_baseUrl/place/details/json?place_id=$placeId&fields=geometry,formatted_address,name,types&key=$_apiKey';
       
+      debugPrint('Getting place details for: $placeId');
       final response = await http.get(Uri.parse(url));
       final data = json.decode(response.body) as Map<String, dynamic>;
       
@@ -157,9 +175,10 @@ class MapsService {
           types: List<String>.from(result['types'] as List? ?? []),
         );
       }
+      debugPrint('Place details error: ${data['status']} - ${data['error_message'] ?? 'Unknown'}');
       return null;
     } catch (e) {
-      print('Place details error: $e');
+      debugPrint('Place details error: $e');
       return null;
     }
   }
@@ -286,5 +305,3 @@ class DirectionsResult {
 
 // Singleton instance
 final mapsService = MapsService();
-
-

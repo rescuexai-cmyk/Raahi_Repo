@@ -8,6 +8,7 @@ import '../../../../core/models/user.dart';
 import '../../../../core/services/api_client.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/router/app_routes.dart';
+import '../../../../core/widgets/ride_aware_scaffold.dart';
 import '../../../auth/providers/auth_provider.dart';
 
 class ProfileScreen extends ConsumerWidget {
@@ -17,7 +18,7 @@ class ProfileScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(currentUserProvider);
 
-    return Scaffold(
+    return RideAwareScaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
         title: const Text('Profile'),

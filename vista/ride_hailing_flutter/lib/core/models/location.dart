@@ -55,12 +55,28 @@ class AddressLocation extends Equatable {
   });
 
   factory AddressLocation.fromJson(Map<String, dynamic> json) {
+    // Handle both lat/lng (backend) and latitude/longitude formats
+    final lat = json['lat'] ?? json['latitude'];
+    final lng = json['lng'] ?? json['longitude'];
     return AddressLocation(
-      latitude: (json['latitude'] as num).toDouble(),
-      longitude: (json['longitude'] as num).toDouble(),
+      latitude: lat is num ? lat.toDouble() : 0.0,
+      longitude: lng is num ? lng.toDouble() : 0.0,
       address: json['address'] as String?,
       name: json['name'] as String?,
-      placeId: json['place_id'] as String?,
+      placeId: (json['place_id'] ?? json['placeId']) as String?,
+    );
+  }
+  
+  // Named constructor for simple lat/lng creation
+  factory AddressLocation.fromLatLng({
+    required double lat,
+    required double lng,
+    String? address,
+  }) {
+    return AddressLocation(
+      latitude: lat,
+      longitude: lng,
+      address: address,
     );
   }
 

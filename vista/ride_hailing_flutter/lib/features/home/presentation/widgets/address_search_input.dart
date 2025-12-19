@@ -27,13 +27,16 @@ class AddressSearchInput extends StatefulWidget {
 class _AddressSearchInputState extends State<AddressSearchInput> {
   final _controller = TextEditingController();
   final _focusNode = FocusNode();
+  final _layerLink = LayerLink();
   List<PlaceSuggestion> _suggestions = [];
   bool _isLoading = false;
   Timer? _debounceTimer;
+  OverlayEntry? _overlayEntry;
 
   @override
   void initState() {
     super.initState();
+    _focusNode.addListener(_onFocusChange);
     if (widget.autoFocus) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _focusNode.requestFocus();
@@ -41,12 +44,110 @@ class _AddressSearchInputState extends State<AddressSearchInput> {
     }
   }
 
+  void _onFocusChange() {
+    if (!_focusNode.hasFocus) {
+      _removeOverlay();
+    }
+  }
+
   @override
   void dispose() {
+    _removeOverlay();
     _controller.dispose();
+    _focusNode.removeListener(_onFocusChange);
     _focusNode.dispose();
     _debounceTimer?.cancel();
     super.dispose();
+  }
+
+  void _removeOverlay() {
+    _overlayEntry?.remove();
+    _overlayEntry = null;
+  }
+
+  void _showOverlay() {
+    _removeOverlay();
+    
+    if (_suggestions.isEmpty) return;
+    
+    final overlay = Overlay.of(context);
+    final renderBox = context.findRenderObject() as RenderBox;
+    final size = renderBox.size;
+    
+    _overlayEntry = OverlayEntry(
+      builder: (context) => Positioned(
+        width: size.width,
+        child: CompositedTransformFollower(
+          link: _layerLink,
+          showWhenUnlinked: false,
+          offset: Offset(0, size.height + 8),
+          child: Material(
+            elevation: 8,
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              constraints: const BoxConstraints(maxHeight: 300),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.15),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  itemCount: _suggestions.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1, indent: 56),
+                  itemBuilder: (context, index) {
+                    final suggestion = _suggestions[index];
+                    return ListTile(
+                      dense: true,
+                      leading: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: AppColors.inputBackground,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(Icons.location_on_outlined, size: 20, color: AppColors.secondary),
+                      ),
+                      title: Text(
+                        suggestion.mainText,
+                        style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      subtitle: Text(
+                        suggestion.secondaryText,
+                        style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      onTap: () => _selectPlace(suggestion),
+                    );
+                  },
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    
+    overlay.insert(_overlayEntry!);
+  }
+
+  void _updateOverlay() {
+    if (_suggestions.isNotEmpty && _focusNode.hasFocus) {
+      _showOverlay();
+    } else {
+      _removeOverlay();
+    }
   }
 
   void _onTextChanged(String value) {
@@ -54,6 +155,7 @@ class _AddressSearchInputState extends State<AddressSearchInput> {
     
     if (value.length < 3) {
       setState(() => _suggestions = []);
+      _removeOverlay();
       return;
     }
 
@@ -72,6 +174,7 @@ class _AddressSearchInputState extends State<AddressSearchInput> {
         radius: 50000,
       );
       setState(() => _suggestions = suggestions);
+      _updateOverlay();
     } catch (e) {
       debugPrint('Error searching places: $e');
     } finally {
@@ -80,12 +183,13 @@ class _AddressSearchInputState extends State<AddressSearchInput> {
   }
 
   Future<void> _selectPlace(PlaceSuggestion suggestion) async {
+    _removeOverlay();
     setState(() => _isLoading = true);
 
     try {
       final details = await mapsService.getPlaceDetails(suggestion.placeId);
       if (details != null) {
-        _controller.text = suggestion.description;
+        _controller.text = suggestion.mainText;
         setState(() => _suggestions = []);
         _focusNode.unfocus();
         widget.onLocationSelected(
@@ -127,31 +231,35 @@ class _AddressSearchInputState extends State<AddressSearchInput> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        TextField(
-          controller: _controller,
-          focusNode: _focusNode,
-          onChanged: _onTextChanged,
-          decoration: InputDecoration(
-            hintText: widget.hint,
-            prefixIcon: const Icon(Icons.search, color: AppColors.textSecondary),
-            suffixIcon: _isLoading
-                ? const Padding(
-                    padding: EdgeInsets.all(12),
-                    child: SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                  )
-                : _controller.text.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear, color: AppColors.textSecondary),
-                        onPressed: () {
-                          _controller.clear();
-                          setState(() => _suggestions = []);
-                        },
-                      )
-                    : null,
+        CompositedTransformTarget(
+          link: _layerLink,
+          child: TextField(
+            controller: _controller,
+            focusNode: _focusNode,
+            onChanged: _onTextChanged,
+            decoration: InputDecoration(
+              hintText: widget.hint,
+              prefixIcon: const Icon(Icons.search, color: AppColors.textSecondary),
+              suffixIcon: _isLoading
+                  ? const Padding(
+                      padding: EdgeInsets.all(12),
+                      child: SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    )
+                  : _controller.text.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear, color: AppColors.textSecondary),
+                          onPressed: () {
+                            _controller.clear();
+                            setState(() => _suggestions = []);
+                            _removeOverlay();
+                          },
+                        )
+                      : null,
+            ),
           ),
         ),
         
@@ -187,62 +295,7 @@ class _AddressSearchInputState extends State<AddressSearchInput> {
               ),
             ),
           ),
-        
-        if (_suggestions.isNotEmpty)
-          Container(
-            margin: const EdgeInsets.only(top: 8),
-            constraints: const BoxConstraints(maxHeight: 250),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.1),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: ListView.separated(
-              shrinkWrap: true,
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              itemCount: _suggestions.length,
-              separatorBuilder: (_, __) => const Divider(height: 1),
-              itemBuilder: (context, index) {
-                final suggestion = _suggestions[index];
-                return ListTile(
-                  leading: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: AppColors.inputBackground,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Icon(Icons.location_on_outlined, size: 20, color: AppColors.textSecondary),
-                  ),
-                  title: Text(
-                    suggestion.mainText,
-                    style: const TextStyle(fontWeight: FontWeight.w500),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  subtitle: Text(
-                    suggestion.secondaryText,
-                    style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  onTap: () => _selectPlace(suggestion),
-                );
-              },
-            ),
-          ),
       ],
     );
   }
 }
-
-
-
-
-
-
