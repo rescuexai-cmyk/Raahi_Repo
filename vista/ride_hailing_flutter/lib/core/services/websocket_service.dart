@@ -265,28 +265,6 @@ class WebSocketService {
     sendMessage('ride_message', {'rideId': rideId, 'message': message});
   }
 
-  // Send chat message
-  void sendChatMessage({required String rideId, required String message}) {
-    sendMessage('chat_message', {
-      'rideId': rideId,
-      'message': {
-        'id': DateTime.now().millisecondsSinceEpoch.toString(),
-        'text': message,
-        'senderId': 'rider',
-        'senderName': 'Rider',
-        'timestamp': DateTime.now().toIso8601String(),
-      },
-    });
-  }
-  
-  // Stream for raw messages (useful for chat)
-  Stream<Map<String, dynamic>>? get messageStream {
-    if (_channel == null) return null;
-    return _channel!.stream.map((data) {
-      return json.decode(data as String) as Map<String, dynamic>;
-    }).asBroadcastStream();
-  }
-
   // Subscribe to ride-specific events
   VoidCallback subscribeToRideUpdates(String rideId, void Function(Map<String, dynamic> data) callback) {
     final unsubscribers = <VoidCallback>[];

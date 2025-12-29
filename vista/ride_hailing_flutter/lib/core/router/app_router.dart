@@ -10,8 +10,6 @@ import '../../features/history/presentation/screens/history_screen.dart';
 import '../../features/profile/presentation/screens/profile_screen.dart';
 import '../../features/ride/presentation/screens/ride_details_screen.dart';
 import '../../features/ride/presentation/screens/ride_tracking_screen.dart';
-import '../../features/ride/presentation/screens/ride_chat_screen.dart';
-import '../../features/ride/providers/ride_state_provider.dart';
 import '../../features/driver/presentation/screens/driver_home_screen.dart';
 import '../widgets/main_scaffold.dart';
 import 'app_routes.dart';
@@ -117,22 +115,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) {
           final rideId = state.pathParameters['rideId'] ?? '';
           return RideTrackingScreen(rideId: rideId);
-        },
-      ),
-      
-      // Ride chat
-      GoRoute(
-        path: AppRoutes.rideChat,
-        name: 'rideChat',
-        builder: (context, state) {
-          final rideId = state.pathParameters['rideId'] ?? '';
-          final driverName = state.uri.queryParameters['driverName'] ?? 'Driver';
-          final driverAvatarUrl = state.uri.queryParameters['driverAvatarUrl'];
-          return RideChatScreen(
-            rideId: rideId,
-            driverName: driverName,
-            driverAvatarUrl: driverAvatarUrl,
-          );
         },
       ),
       

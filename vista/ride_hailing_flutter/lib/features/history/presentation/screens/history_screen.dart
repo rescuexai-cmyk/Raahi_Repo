@@ -6,7 +6,6 @@ import '../../../../core/models/ride.dart';
 import '../../../../core/services/api_client.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/router/app_routes.dart';
-import '../../../../core/widgets/ride_aware_scaffold.dart';
 import '../../../auth/providers/auth_provider.dart';
 
 class HistoryScreen extends ConsumerStatefulWidget {
@@ -54,7 +53,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return RideAwareScaffold(
+    return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
         title: const Text('Ride History'),

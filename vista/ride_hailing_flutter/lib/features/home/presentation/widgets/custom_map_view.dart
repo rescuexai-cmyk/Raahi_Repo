@@ -267,11 +267,6 @@ class _CustomMapViewState extends State<CustomMapView> {
   Widget build(BuildContext context) {
     final initialPosition = widget.currentUserLocation ?? _userLocation;
     
-    // Check if API key is configured (will show placeholder if not)
-    if (!AppConfig.isMapsConfigured) {
-      return _buildMapPlaceholder(context);
-    }
-    
     return GoogleMap(
       initialCameraPosition: CameraPosition(
         target: initialPosition != null
@@ -296,144 +291,10 @@ class _CustomMapViewState extends State<CustomMapView> {
     );
   }
 
-  Widget _buildMapPlaceholder(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            AppColors.primary.withOpacity(0.1),
-            AppColors.secondary.withOpacity(0.1),
-          ],
-        ),
-      ),
-      child: Stack(
-        children: [
-          // Grid pattern to simulate map
-          CustomPaint(
-            painter: _MapGridPainter(),
-            size: Size.infinite,
-          ),
-          // Demo markers
-          if (_userLocation != null || widget.currentUserLocation != null)
-            Positioned(
-              top: MediaQuery.of(context).size.height * 0.35,
-              left: MediaQuery.of(context).size.width * 0.45,
-              child: const Icon(Icons.location_on, color: AppColors.primary, size: 40),
-            ),
-          // Driver markers simulation
-          for (int i = 0; i < (widget.drivers.length.clamp(0, 5)); i++)
-            Positioned(
-              top: 150.0 + (i * 60),
-              left: 80.0 + (i * 50),
-              child: Container(
-                padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4)],
-                ),
-                child: const Icon(Icons.directions_car, color: AppColors.success, size: 24),
-              ),
-            ),
-          // Info banner
-          Positioned(
-            top: 100,
-            left: 20,
-            right: 20,
-            child: Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 8)],
-              ),
-              child: Column(
-                children: [
-                  const Icon(Icons.map, color: AppColors.secondary, size: 32),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Demo Mode',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Map preview (API key not configured)',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: AppColors.textSecondary,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   void dispose() {
     _mapController?.dispose();
     super.dispose();
   }
-}
-
-// Custom painter for map grid placeholder
-class _MapGridPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = AppColors.border.withOpacity(0.3)
-      ..strokeWidth = 0.5;
-
-    // Draw horizontal lines
-    for (double y = 0; y < size.height; y += 30) {
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
-    }
-
-    // Draw vertical lines
-    for (double x = 0; x < size.width; x += 30) {
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
-    }
-
-    // Draw some "roads" - horizontal
-    final roadPaint = Paint()
-      ..color = Colors.grey.withOpacity(0.4)
-      ..strokeWidth = 8;
-
-    canvas.drawLine(
-      Offset(0, size.height * 0.3),
-      Offset(size.width, size.height * 0.3),
-      roadPaint,
-    );
-    canvas.drawLine(
-      Offset(0, size.height * 0.6),
-      Offset(size.width, size.height * 0.6),
-      roadPaint,
-    );
-
-    // Draw some "roads" - vertical
-    canvas.drawLine(
-      Offset(size.width * 0.25, 0),
-      Offset(size.width * 0.25, size.height),
-      roadPaint,
-    );
-    canvas.drawLine(
-      Offset(size.width * 0.7, 0),
-      Offset(size.width * 0.7, size.height),
-      roadPaint,
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 

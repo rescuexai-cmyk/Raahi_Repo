@@ -35,16 +35,12 @@ class OTPResult {
   final String? sessionId;
   final String? error;
   final int? expiresIn;
-  final bool isNewUser;
-  final String? demoOtp; // For development
 
   const OTPResult({
     required this.success,
     this.sessionId,
     this.error,
     this.expiresIn,
-    this.isNewUser = false,
-    this.demoOtp,
   });
 }
 
@@ -66,20 +62,14 @@ class VerifyOTPResult {
 }
 
 // Auth notifier
-class AuthNotifier extends Notifier<AuthState> {
-  late final FlutterSecureStorage _secureStorage;
+class AuthNotifier extends StateNotifier<AuthState> {
+  final FlutterSecureStorage _secureStorage;
   static const _tokenKey = 'auth_token';
   static const _userKey = 'user_data';
   static const _countryCode = '+91';
-  
-  // Store the session ID from requestOTP for use in verifyOTP
-  String? _currentSessionId;
 
-  @override
-  AuthState build() {
-    _secureStorage = ref.watch(secureStorageProvider);
+  AuthNotifier(this._secureStorage) : super(const AuthState(isLoading: true)) {
     _initializeAuth();
-    return const AuthState(isLoading: true);
   }
 
   Future<void> _initializeAuth() async {
@@ -90,32 +80,22 @@ class AuthNotifier extends Notifier<AuthState> {
         apiClient.setAuthToken(token);
         
         try {
-          final response = await apiClient.getCurrentUser();
-          final userData = response['user'] as Map<String, dynamic>?;
+          final userData = await apiClient.getCurrentUser();
+          final user = User.fromJson(userData);
           
-          if (userData != null) {
-            final user = _mapUser(userData);
-            
-            // Connect to WebSocket
-            try {
-              await webSocketService.connect(token: token);
-            } catch (e) {
-              print('WebSocket connection failed: $e');
-            }
-            
-            state = AuthState(user: user);
-            return;
-          }
+          // Connect to WebSocket
+          await webSocketService.connect(token: token);
+          
+          state = AuthState(user: user);
         } catch (e) {
-          print('Failed to get current user: $e');
           // Token might be expired
           await _secureStorage.delete(key: _tokenKey);
+          state = const AuthState();
         }
+      } else {
+        state = const AuthState();
       }
-      
-      state = const AuthState();
     } catch (e) {
-      print('Auth initialization error: $e');
       state = AuthState(error: e.toString());
     }
   }
@@ -126,89 +106,47 @@ class AuthNotifier extends Notifier<AuthState> {
     try {
       final response = await apiClient.requestOTP(phone, countryCode: _countryCode);
       
-      final success = response['success'] as bool? ?? false;
-      final sessionId = response['sessionId'] as String?;
-      final expiresIn = response['expiresIn'] as int?;
-      final isNewUser = response['isNewUser'] as bool? ?? false;
-      final demoOtp = response['demoOtp'] as String?;
-      
-      // Store session ID for verification
-      _currentSessionId = sessionId;
-      
       state = state.copyWith(isLoading: false);
       
-      print('📱 OTP requested - Session: $sessionId, Demo OTP: $demoOtp');
-      
       return OTPResult(
-        success: success,
-        sessionId: sessionId,
-        expiresIn: expiresIn,
-        isNewUser: isNewUser,
-        demoOtp: demoOtp,
+        success: response['success'] as bool? ?? true,
+        sessionId: null,
+        expiresIn: null,
       );
     } catch (e) {
-      print('Request OTP error: $e');
       state = state.copyWith(isLoading: false, error: e.toString());
       return OTPResult(success: false, error: e.toString());
     }
   }
 
-  Future<VerifyOTPResult> verifyOTP(String phone, String otp, {String? name}) async {
+  Future<VerifyOTPResult> verifyOTP(String phone, String otp) async {
     state = state.copyWith(isLoading: true, error: null);
     
-    if (_currentSessionId == null) {
-      state = state.copyWith(isLoading: false);
-      return const VerifyOTPResult(
-        success: false,
-        error: 'No active OTP session. Please request OTP again.',
-      );
-    }
-    
     try {
-      final response = await apiClient.verifyOTP(
-        _currentSessionId!,
-        otp,
-        phone: '$_countryCode$phone',
-        userData: name != null ? {'name': name, 'user_type': 'rider'} : null,
-      );
-      
+      final response = await apiClient.verifyOTP(phone, otp, countryCode: _countryCode);
       final success = response['success'] as bool? ?? false;
 
       if (!success) {
         state = state.copyWith(isLoading: false);
         return VerifyOTPResult(
           success: false,
-          error: response['error'] as String? ?? 'Verification failed',
+          error: response['message'] as String? ?? 'Verification failed',
         );
       }
 
-      final userJson = response['user'] as Map<String, dynamic>?;
-      final token = response['token'] as String?;
-      
-      if (userJson == null) {
-        state = state.copyWith(isLoading: false);
-        return const VerifyOTPResult(
-          success: false,
-          error: 'Invalid response from server',
-        );
-      }
+      final data = response['data'] as Map<String, dynamic>? ?? {};
+      final tokens = data['tokens'] as Map<String, dynamic>? ?? {};
+      final userJson = data['user'] as Map<String, dynamic>? ?? {};
 
       final user = _mapUser(userJson);
+      final token = tokens['accessToken'] as String?;
 
       if (token != null) {
         await _secureStorage.write(key: _tokenKey, value: token);
         apiClient.setAuthToken(token);
-        
-        try {
-          await webSocketService.connect(token: token);
-        } catch (e) {
-          print('WebSocket connection failed: $e');
-        }
+        await webSocketService.connect(token: token);
       }
 
-      // Clear session ID
-      _currentSessionId = null;
-      
       state = AuthState(user: user);
 
       return VerifyOTPResult(
@@ -218,38 +156,12 @@ class AuthNotifier extends Notifier<AuthState> {
         isNewUser: false,
       );
     } catch (e) {
-      print('Verify OTP error: $e');
       state = state.copyWith(isLoading: false, error: e.toString());
       return VerifyOTPResult(success: false, error: e.toString());
     }
   }
 
   Future<OTPResult> resendOTP(String phone) => requestOTP(phone);
-
-  /// Demo login with dummy user data - bypasses OTP verification
-  Future<void> demoLogin() async {
-    state = state.copyWith(isLoading: true, error: null);
-    
-    // Simulate network delay
-    await Future.delayed(const Duration(milliseconds: 500));
-    
-    final demoUser = User(
-      id: 'demo-user-001',
-      email: 'demo@rideapp.com',
-      phone: '+91 9876543210',
-      name: 'Demo User',
-      avatarUrl: null,
-      userType: UserType.rider,
-      createdAt: DateTime.now(),
-      updatedAt: DateTime.now(),
-      userMetadata: {'isDemo': true},
-    );
-    
-    // Save demo token
-    await _secureStorage.write(key: _tokenKey, value: 'demo-token-123');
-    
-    state = AuthState(user: demoUser);
-  }
 
   Future<void> signOut() async {
     state = state.copyWith(isLoading: true);
@@ -263,10 +175,7 @@ class AuthNotifier extends Notifier<AuthState> {
     
     await _secureStorage.delete(key: _tokenKey);
     await _secureStorage.delete(key: _userKey);
-    // Clear any active ride state
-    await _secureStorage.delete(key: 'current_ride_state');
     apiClient.setAuthToken(null);
-    _currentSessionId = null;
     
     state = const AuthState();
   }
@@ -276,33 +185,20 @@ class AuthNotifier extends Notifier<AuthState> {
   }
 
   User _mapUser(Map<String, dynamic> json) {
-    // Handle backend's user format
-    final name = json['name'] as String? ?? json['phone'] as String? ?? 'User';
-    
+    final firstName = json['firstName'] as String? ?? '';
+    final lastName = json['lastName'] as String? ?? '';
+    final name = [firstName, lastName].where((p) => p.isNotEmpty).join(' ').trim();
     return User(
       id: json['id'] as String,
-      email: json['email'] as String?,
+      email: json['email'] as String? ?? '',
       phone: json['phone'] as String?,
-      name: name,
-      avatarUrl: json['avatarUrl'] as String?,
-      userType: _parseUserType(json['userType'] as String?),
+      name: name.isNotEmpty ? name : (json['phone'] as String? ?? 'User'),
+      avatarUrl: json['profileImage'] as String?,
+      userType: UserType.rider,
       createdAt: DateTime.tryParse(json['createdAt'] as String? ?? '') ?? DateTime.now(),
-      updatedAt: DateTime.tryParse(json['updatedAt'] as String? ?? '') ?? DateTime.now(),
-      rating: (json['rating'] as num?)?.toDouble(),
-      totalRides: json['totalRides'] as int? ?? 0,
+      updatedAt: DateTime.tryParse(json['lastLoginAt'] as String? ?? '') ?? DateTime.now(),
       userMetadata: null,
     );
-  }
-  
-  UserType _parseUserType(String? type) {
-    switch (type?.toLowerCase()) {
-      case 'driver':
-        return UserType.driver;
-      case 'admin':
-        return UserType.admin;
-      default:
-        return UserType.rider;
-    }
   }
 }
 
@@ -314,8 +210,9 @@ final secureStorageProvider = Provider<FlutterSecureStorage>((ref) {
   );
 });
 
-final authStateProvider = NotifierProvider<AuthNotifier, AuthState>(() {
-  return AuthNotifier();
+final authStateProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
+  final secureStorage = ref.watch(secureStorageProvider);
+  return AuthNotifier(secureStorage);
 });
 
 // Convenience providers
@@ -330,3 +227,5 @@ final isAuthenticatedProvider = Provider<bool>((ref) {
 final isLoadingAuthProvider = Provider<bool>((ref) {
   return ref.watch(authStateProvider).isLoading;
 });
+
+

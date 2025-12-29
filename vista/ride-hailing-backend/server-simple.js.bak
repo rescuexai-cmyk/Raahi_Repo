@@ -25,6 +25,8 @@ const db = {
   rides: new Map(),
   otpSessions: new Map(),
   driverLocations: new Map(),
+  payments: new Map(),
+  wallets: new Map(),
 };
 
 // Seed some demo drivers
@@ -153,6 +155,28 @@ const authMiddleware = (req, res, next) => {
   }
 
   const token = authHeader.split(' ')[1];
+  
+  // Handle demo tokens for testing
+  if (token === 'demo-driver-token') {
+    req.user = {
+      userId: 'driver-1',
+      phone: '+919876543210',
+      userType: 'driver',
+    };
+    console.log('🎭 Demo driver token accepted');
+    return next();
+  }
+  
+  if (token === 'demo-token-123') {
+    req.user = {
+      userId: 'demo-user-001',
+      phone: '+919876543210',
+      userType: 'rider',
+    };
+    console.log('🎭 Demo rider token accepted');
+    return next();
+  }
+  
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
     req.user = decoded;
@@ -259,7 +283,86 @@ app.post('/api/auth/verify-otp', (req, res) => {
   session.verified = true;
   db.otpSessions.delete(sessionId);
 
-  // Find or create user
+  const isDriverLogin = userData?.user_type === 'driver';
+
+  // For driver login, first check if driver exists by phone
+  if (isDriverLogin) {
+    let existingDriver = null;
+    for (const [id, driver] of db.drivers) {
+      if (driver.phone === session.phone) {
+        existingDriver = driver;
+        break;
+      }
+    }
+
+    if (existingDriver) {
+      // Existing driver found - return driver data
+      existingDriver.updatedAt = new Date().toISOString();
+      db.drivers.set(existingDriver.id, existingDriver);
+      
+      const token = jwt.sign(
+        { userId: existingDriver.id, phone: existingDriver.phone, userType: 'driver' },
+        JWT_SECRET,
+        { expiresIn: '30d' }
+      );
+
+      console.log(`🚗 Driver logged in: ${existingDriver.name} (${existingDriver.id})`);
+
+      return res.json({
+        success: true,
+        token,
+        user: {
+          ...existingDriver,
+          userType: 'driver',
+        },
+        message: 'Driver login successful',
+      });
+    } else {
+      // Create new driver
+      const newDriver = {
+        id: uuidv4(),
+        phone: session.phone,
+        name: userData?.name || 'New Driver',
+        email: userData?.email || null,
+        userType: 'driver',
+        vehicleType: userData?.vehicleType || 'economy',
+        vehicleNumber: userData?.vehicleNumber || 'Pending',
+        vehicleModel: userData?.vehicleModel || 'Pending',
+        vehicleColor: userData?.vehicleColor || 'White',
+        rating: 5.0,
+        totalRides: 0,
+        status: 'offline',
+        isAvailable: false,
+        location: { lat: 28.6139, lng: 77.2090 },
+        avatarUrl: null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      db.drivers.set(newDriver.id, newDriver);
+      db.driverLocations.set(newDriver.id, newDriver.location);
+
+      const token = jwt.sign(
+        { userId: newDriver.id, phone: newDriver.phone, userType: 'driver' },
+        JWT_SECRET,
+        { expiresIn: '30d' }
+      );
+
+      console.log(`🚗 New driver registered: ${newDriver.name} (${newDriver.id})`);
+
+      return res.json({
+        success: true,
+        token,
+        user: {
+          ...newDriver,
+          userType: 'driver',
+        },
+        message: 'Driver registration successful',
+      });
+    }
+  }
+
+  // Regular user/rider login
   let user = null;
   for (const [id, u] of db.users) {
     if (u.phone === session.phone) {
@@ -308,9 +411,23 @@ app.post('/api/auth/verify-otp', (req, res) => {
 });
 
 app.get('/api/auth/me', authMiddleware, (req, res) => {
+  // First check if user is a driver
+  if (req.user.userType === 'driver') {
+    const driver = db.drivers.get(req.user.userId);
+    if (driver) {
+      return res.json({ success: true, user: { ...driver, userType: 'driver' } });
+    }
+  }
+
+  // Then check regular users
   const user = db.users.get(req.user.userId);
 
   if (!user) {
+    // Also check drivers collection as fallback
+    const driver = db.drivers.get(req.user.userId);
+    if (driver) {
+      return res.json({ success: true, user: { ...driver, userType: 'driver' } });
+    }
     return res.status(404).json({ success: false, error: 'User not found' });
   }
 
@@ -431,6 +548,28 @@ app.post('/api/drivers/status', authMiddleware, (req, res) => {
 
   let driver = db.drivers.get(req.user.userId);
 
+  // If driver not found but user is driver type, create driver record
+  if (!driver && req.user.userType === 'driver') {
+    driver = {
+      id: req.user.userId,
+      phone: req.user.phone,
+      name: 'Driver',
+      userType: 'driver',
+      vehicleType: 'economy',
+      vehicleNumber: 'Pending',
+      vehicleModel: 'Pending',
+      rating: 5.0,
+      totalRides: 0,
+      status: 'offline',
+      isAvailable: false,
+      location: { lat: 28.6139, lng: 77.2090 },
+      createdAt: new Date().toISOString(),
+    };
+    db.drivers.set(driver.id, driver);
+    db.driverLocations.set(driver.id, driver.location);
+    console.log(`🚗 Created driver record for: ${driver.id}`);
+  }
+
   if (!driver) {
     return res.status(404).json({ success: false, error: 'Driver not found' });
   }
@@ -440,6 +579,8 @@ app.post('/api/drivers/status', authMiddleware, (req, res) => {
   driver.updatedAt = new Date().toISOString();
 
   db.drivers.set(driver.id, driver);
+
+  console.log(`🚗 Driver ${driver.name} status: ${driver.status}, available: ${driver.isAvailable}`);
 
   res.json({ success: true, driver });
 });
@@ -451,7 +592,28 @@ app.post('/api/drivers/location', authMiddleware, (req, res) => {
     return res.status(400).json({ success: false, error: 'Location required' });
   }
 
-  const driver = db.drivers.get(req.user.userId);
+  let driver = db.drivers.get(req.user.userId);
+
+  // Auto-create driver if not exists but user is driver type
+  if (!driver && req.user.userType === 'driver') {
+    driver = {
+      id: req.user.userId,
+      phone: req.user.phone,
+      name: 'Driver',
+      userType: 'driver',
+      vehicleType: 'economy',
+      vehicleNumber: 'Pending',
+      vehicleModel: 'Pending',
+      rating: 5.0,
+      totalRides: 0,
+      status: 'offline',
+      isAvailable: false,
+      location: { lat, lng },
+      createdAt: new Date().toISOString(),
+    };
+    db.drivers.set(driver.id, driver);
+    console.log(`🚗 Created driver record for location update: ${driver.id}`);
+  }
 
   if (!driver) {
     return res.status(404).json({ success: false, error: 'Driver not found' });
@@ -471,6 +633,30 @@ app.post('/api/drivers/location', authMiddleware, (req, res) => {
 // ============================================
 // RIDE ROUTES
 // ============================================
+
+// Get pending rides for drivers
+app.get('/api/rides/pending', authMiddleware, (req, res) => {
+  // Only for drivers
+  if (req.user.userType !== 'driver') {
+    return res.status(403).json({ success: false, error: 'Only drivers can view pending rides' });
+  }
+
+  const pendingRides = [];
+  
+  for (const [id, ride] of db.rides) {
+    if (ride.status === 'requested' && !ride.driverId) {
+      pendingRides.push(ride);
+    }
+  }
+
+  // Sort by creation time, newest first
+  pendingRides.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+  console.log(`📋 Returning ${pendingRides.length} pending rides for driver ${req.user.userId}`);
+
+  res.json({ success: true, rides: pendingRides });
+});
+
 app.post('/api/rides/request', authMiddleware, (req, res) => {
   const {
     pickupLocation,
@@ -782,13 +968,192 @@ app.get('/api/maps/directions', (req, res) => {
   });
 });
 
+// ============================================
+// PRICING ALGORITHM FUNCTIONS
+// ============================================
+
+// Algorithm 1: Base Fare Calculation (Distance + Time Based)
+function calculateBaseFare(distanceKm, timeMin, vehicleType) {
+  const STARTING_FEE = 30;
+  const RATE_PER_KM = 12;
+  const RATE_PER_MIN = 1.5;
+  
+  const VEHICLE_MULTIPLIER = {
+    mini: 1.0,
+    bike: 0.8,
+    bike_rescue: 0.9,
+    economy: 1.0,
+    sedan: 1.3,
+    comfort: 1.3,
+    suv: 1.6,
+    xl: 1.6,
+    premium: 2.0,
+    personal_driver: 1.5,
+  };
+
+  const rawFare = STARTING_FEE + (distanceKm * RATE_PER_KM) + (timeMin * RATE_PER_MIN);
+  const multiplier = VEHICLE_MULTIPLIER[vehicleType] || 1.0;
+  
+  return rawFare * multiplier;
+}
+
+// Algorithm 2: Dynamic Pricing (Surge & Peak Hours)
+function calculateDynamicFare(baseFare, options = {}) {
+  const {
+    demandSupplyRatio = 1.0,
+    isPeakHour = false,
+    isNight = false,
+    isWeekend = false,
+    weather = 'normal',
+    isSpecialEvent = false,
+  } = options;
+
+  const MAX_MULTIPLIER = 2.0;
+
+  // Surge multiplier based on demand/supply ratio
+  let surgeMultiplier = 1.0;
+  if (demandSupplyRatio < 0.8) surgeMultiplier = 1.0;
+  else if (demandSupplyRatio < 1.2) surgeMultiplier = 1.2;
+  else if (demandSupplyRatio < 1.8) surgeMultiplier = 1.5;
+  else if (demandSupplyRatio < 2.5) surgeMultiplier = 1.8;
+  else surgeMultiplier = 2.0;
+
+  // Time-based multipliers
+  let timeMultiplier = 1.0;
+  if (isPeakHour) timeMultiplier *= 1.15;
+  if (isNight) timeMultiplier *= 1.25;
+  if (isWeekend) timeMultiplier *= 1.1;
+
+  // Weather multiplier
+  let weatherMultiplier = 1.0;
+  if (weather === 'rain') weatherMultiplier = 1.15;
+  if (weather === 'heavy_rain') weatherMultiplier = 1.3;
+
+  // Event multiplier
+  const eventMultiplier = isSpecialEvent ? 1.2 : 1.0;
+
+  // Calculate total multiplier with cap
+  let totalMultiplier = surgeMultiplier * timeMultiplier * weatherMultiplier * eventMultiplier;
+  if (totalMultiplier > MAX_MULTIPLIER) {
+    totalMultiplier = MAX_MULTIPLIER;
+  }
+
+  return {
+    fare: baseFare * totalMultiplier,
+    surgeMultiplier,
+    totalMultiplier,
+    isPeakHour,
+    isNight,
+    weather,
+  };
+}
+
+// Algorithm 3: Final Fare with Additional Charges
+function calculateFinalFare(dynamicFare, options = {}) {
+  const {
+    tolls = 0,
+    waitingMinutes = 0,
+    hasAirportPickup = false,
+    parkingFees = 0,
+    extraStopsCount = 0,
+    discountPercent = 0,
+  } = options;
+
+  const FREE_WAITING_MIN = 3;
+  const WAITING_RATE_PER_MIN = 2;
+  const AIRPORT_PICKUP_FEE = 50;
+  const EXTRA_STOP_FEE = 10;
+  const MINIMUM_FARE = 50;
+  const GST_RATE = 0.05; // 5%
+
+  // Calculate waiting charges
+  const chargeableWaitingMin = Math.max(0, waitingMinutes - FREE_WAITING_MIN);
+  const waitingCharge = chargeableWaitingMin * WAITING_RATE_PER_MIN;
+
+  // Additional charges
+  const airportCharge = hasAirportPickup ? AIRPORT_PICKUP_FEE : 0;
+  const stopsCharge = extraStopsCount * EXTRA_STOP_FEE;
+
+  const additionalCharges = tolls + waitingCharge + airportCharge + parkingFees + stopsCharge;
+
+  // Subtotal
+  let subtotal = dynamicFare + additionalCharges;
+  if (subtotal < MINIMUM_FARE) {
+    subtotal = MINIMUM_FARE;
+  }
+
+  // Apply discount
+  const discount = (subtotal * discountPercent) / 100;
+  const afterDiscount = subtotal - discount;
+
+  // Apply GST
+  const gst = afterDiscount * GST_RATE;
+  const finalFare = afterDiscount + gst;
+
+  return {
+    subtotal: Math.round(subtotal),
+    additionalCharges: Math.round(additionalCharges),
+    tolls,
+    waitingCharge: Math.round(waitingCharge),
+    airportCharge,
+    parkingFees,
+    stopsCharge,
+    discount: Math.round(discount),
+    gst: Math.round(gst),
+    total: Math.round(finalFare),
+  };
+}
+
+// Helper to determine current pricing conditions
+function getPricingConditions() {
+  const now = new Date();
+  const hour = now.getHours();
+  const day = now.getDay();
+
+  // Peak hours: 8-10 AM and 5-8 PM
+  const isPeakHour = (hour >= 8 && hour <= 10) || (hour >= 17 && hour <= 20);
+  
+  // Night hours: 10 PM - 6 AM
+  const isNight = hour >= 22 || hour < 6;
+  
+  // Weekend: Saturday (6) and Sunday (0)
+  const isWeekend = day === 0 || day === 6;
+
+  // Simulated demand/supply ratio (in production, this comes from real-time data)
+  const onlineDrivers = Array.from(db.drivers.values()).filter(d => d.isAvailable && d.status === 'online').length;
+  const pendingRides = Array.from(db.rides.values()).filter(r => r.status === 'requested').length;
+  const demandSupplyRatio = onlineDrivers > 0 ? (pendingRides + 1) / onlineDrivers : 1.5;
+
+  return {
+    isPeakHour,
+    isNight,
+    isWeekend,
+    demandSupplyRatio: Math.min(demandSupplyRatio, 3.0),
+    weather: 'normal', // Could integrate weather API
+    isSpecialEvent: false, // Could check event calendar
+  };
+}
+
+// ============================================
+// FARE ESTIMATE ENDPOINT (Enhanced)
+// ============================================
+
 app.post('/api/maps/fare-estimate', (req, res) => {
-  const { pickupLocation, destinationLocation, rideType } = req.body;
+  const { 
+    pickupLocation, 
+    destinationLocation, 
+    rideType,
+    // Optional parameters
+    hasAirportPickup,
+    extraStopsCount,
+    discountCode,
+  } = req.body;
 
   if (!pickupLocation || !destinationLocation) {
     return res.status(400).json({ success: false, error: 'Locations required' });
   }
 
+  // Calculate distance in meters
   const distance = calculateDistance(
     pickupLocation.lat,
     pickupLocation.lng,
@@ -797,41 +1162,331 @@ app.post('/api/maps/fare-estimate', (req, res) => {
   );
 
   const distanceKm = distance / 1000;
-  const durationMin = Math.ceil(distance / 500);
+  // Estimate time: average 30 km/h in city traffic
+  const durationMin = Math.ceil((distanceKm / 30) * 60);
 
-  // Calculate fare based on ride type
-  const fareRates = {
-    bike: { base: 20, perKm: 8, perMin: 1 },
-    economy: { base: 40, perKm: 12, perMin: 1.5 },
-    comfort: { base: 60, perKm: 16, perMin: 2 },
-    premium: { base: 100, perKm: 25, perMin: 3 },
-    xl: { base: 80, perKm: 20, perMin: 2.5 },
+  // Get current pricing conditions
+  const conditions = getPricingConditions();
+
+  // Step 1: Calculate base fare
+  const baseFare = calculateBaseFare(distanceKm, durationMin, rideType || 'economy');
+
+  // Step 2: Apply dynamic pricing
+  const dynamicResult = calculateDynamicFare(baseFare, conditions);
+
+  // Step 3: Calculate final fare with additional charges
+  const discountPercent = discountCode ? 10 : 0; // Demo: any code gives 10% off
+  const finalResult = calculateFinalFare(dynamicResult.fare, {
+    hasAirportPickup: hasAirportPickup || false,
+    extraStopsCount: extraStopsCount || 0,
+    discountPercent,
+  });
+
+  // Build response
+  const fareEstimate = {
+    // Basic info
+    rideType: rideType || 'economy',
+    currency: 'INR',
+    
+    // Distance & Time
+    estimatedDistance: Math.round(distanceKm * 10) / 10,
+    estimatedDistanceMeters: Math.round(distance),
+    estimatedDuration: durationMin,
+    
+    // Fare breakdown
+    baseFare: Math.round(baseFare),
+    
+    // Dynamic pricing
+    surgeMultiplier: dynamicResult.surgeMultiplier,
+    surgeFare: Math.round(dynamicResult.fare),
+    isPeakHour: conditions.isPeakHour,
+    isNightFare: conditions.isNight,
+    isWeekendFare: conditions.isWeekend,
+    
+    // Additional charges
+    additionalCharges: finalResult.additionalCharges,
+    airportCharge: finalResult.airportCharge,
+    stopsCharge: finalResult.stopsCharge,
+    
+    // Discount
+    discountApplied: discountPercent > 0,
+    discountPercent,
+    discountAmount: finalResult.discount,
+    
+    // Taxes
+    gst: finalResult.gst,
+    gstPercent: 5,
+    
+    // Final amounts
+    subtotal: finalResult.subtotal,
+    total: finalResult.total,
+    
+    // Fare range (±10%)
+    fareRange: {
+      min: Math.round(finalResult.total * 0.9),
+      max: Math.round(finalResult.total * 1.1),
+    },
+    
+    // All vehicle types comparison
+    allTypes: calculateAllVehicleTypes(distanceKm, durationMin, conditions, {
+      hasAirportPickup: hasAirportPickup || false,
+      extraStopsCount: extraStopsCount || 0,
+      discountPercent,
+    }),
   };
 
-  const rate = fareRates[rideType] || fareRates.economy;
-  const baseFare = rate.base;
-  const distanceFare = distanceKm * rate.perKm;
-  const timeFare = durationMin * rate.perMin;
-  const subtotal = baseFare + distanceFare + timeFare;
-  const taxes = subtotal * 0.05; // 5% tax
-  const total = subtotal + taxes;
+  console.log(`💰 Fare estimate: ${distanceKm.toFixed(1)}km, ${durationMin}min → ₹${finalResult.total} (${rideType || 'economy'})`);
+  if (conditions.isPeakHour) console.log('   ⚡ Peak hour pricing active');
+  if (dynamicResult.surgeMultiplier > 1) console.log(`   📈 Surge: ${dynamicResult.surgeMultiplier}x`);
 
   res.json({
     success: true,
-    fareEstimate: {
-      rideType: rideType || 'economy',
-      baseFare: Math.round(baseFare),
-      distanceFare: Math.round(distanceFare),
-      timeFare: Math.round(timeFare),
-      subtotal: Math.round(subtotal),
-      taxes: Math.round(taxes),
-      total: Math.round(total),
+    fareEstimate,
+  });
+});
+
+// Calculate fares for all vehicle types
+function calculateAllVehicleTypes(distanceKm, durationMin, conditions, options) {
+  const vehicleTypes = [
+    { id: 'bike', name: 'Bike', icon: 'two_wheeler' },
+    { id: 'bike_rescue', name: 'Bike Rescue', icon: 'motorcycle' },
+    { id: 'mini', name: 'Mini', icon: 'directions_car' },
+    { id: 'economy', name: 'Economy', icon: 'directions_car' },
+    { id: 'sedan', name: 'Sedan', icon: 'local_taxi' },
+    { id: 'comfort', name: 'Comfort', icon: 'airline_seat_recline_extra' },
+    { id: 'suv', name: 'SUV', icon: 'directions_car' },
+    { id: 'xl', name: 'XL', icon: 'airport_shuttle' },
+    { id: 'premium', name: 'Premium', icon: 'star' },
+    { id: 'personal_driver', name: 'Personal Driver', icon: 'person' },
+  ];
+
+  return vehicleTypes.map(type => {
+    const base = calculateBaseFare(distanceKm, durationMin, type.id);
+    const dynamic = calculateDynamicFare(base, conditions);
+    const final = calculateFinalFare(dynamic.fare, options);
+
+    return {
+      id: type.id,
+      name: type.name,
+      icon: type.icon,
+      baseFare: Math.round(base),
+      total: final.total,
+      eta: Math.floor(Math.random() * 8) + 2, // 2-10 min ETA (simulated)
+      available: Math.random() > 0.2, // 80% availability (simulated)
+    };
+  });
+}
+
+// ============================================
+// PAYMENTS
+// ============================================
+
+// Get wallet balance
+app.get('/api/wallet', authMiddleware, (req, res) => {
+  let wallet = db.wallets.get(req.user.userId);
+  
+  if (!wallet) {
+    // Create default wallet
+    wallet = {
+      id: uuidv4(),
+      userId: req.user.userId,
+      balance: 500.00, // Demo starting balance
       currency: 'INR',
-      estimatedDistance: Math.round(distanceKm * 10) / 10,
-      estimatedDuration: durationMin,
-      distance: Math.round(distance),
-      estimatedTime: durationMin,
-    },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    db.wallets.set(req.user.userId, wallet);
+  }
+  
+  res.json({ success: true, wallet });
+});
+
+// Add money to wallet
+app.post('/api/wallet/add', authMiddleware, (req, res) => {
+  const { amount, paymentMethod } = req.body;
+  
+  if (!amount || amount <= 0) {
+    return res.status(400).json({ success: false, error: 'Invalid amount' });
+  }
+  
+  let wallet = db.wallets.get(req.user.userId);
+  if (!wallet) {
+    wallet = {
+      id: uuidv4(),
+      userId: req.user.userId,
+      balance: 0,
+      currency: 'INR',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+  }
+  
+  wallet.balance += parseFloat(amount);
+  wallet.updatedAt = new Date().toISOString();
+  db.wallets.set(req.user.userId, wallet);
+  
+  // Create transaction record
+  const transaction = {
+    id: uuidv4(),
+    userId: req.user.userId,
+    type: 'credit',
+    amount: parseFloat(amount),
+    paymentMethod: paymentMethod || 'upi',
+    status: 'completed',
+    description: 'Wallet top-up',
+    createdAt: new Date().toISOString(),
+  };
+  
+  res.json({ success: true, wallet, transaction });
+});
+
+// Create payment for ride
+app.post('/api/payments/create', authMiddleware, (req, res) => {
+  const { rideId, amount, paymentMethod } = req.body;
+  
+  if (!rideId || !amount) {
+    return res.status(400).json({ success: false, error: 'Ride ID and amount required' });
+  }
+  
+  const ride = db.rides.get(rideId);
+  if (!ride) {
+    return res.status(404).json({ success: false, error: 'Ride not found' });
+  }
+  
+  const payment = {
+    id: uuidv4(),
+    rideId,
+    riderId: req.user.userId,
+    driverId: ride.driverId,
+    amount: parseFloat(amount),
+    currency: 'INR',
+    paymentMethod: paymentMethod || 'cash',
+    status: 'pending',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  
+  db.payments.set(payment.id, payment);
+  
+  // Update ride with payment ID
+  ride.paymentId = payment.id;
+  ride.paymentStatus = 'pending';
+  db.rides.set(rideId, ride);
+  
+  res.json({ success: true, payment });
+});
+
+// Process payment
+app.post('/api/payments/:id/process', authMiddleware, (req, res) => {
+  const { id } = req.params;
+  const { paymentMethod } = req.body;
+  
+  const payment = db.payments.get(id);
+  if (!payment) {
+    return res.status(404).json({ success: false, error: 'Payment not found' });
+  }
+  
+  if (payment.status === 'completed') {
+    return res.status(400).json({ success: false, error: 'Payment already completed' });
+  }
+  
+  // Process based on payment method
+  if (paymentMethod === 'wallet') {
+    const wallet = db.wallets.get(req.user.userId);
+    if (!wallet || wallet.balance < payment.amount) {
+      return res.status(400).json({ success: false, error: 'Insufficient wallet balance' });
+    }
+    
+    wallet.balance -= payment.amount;
+    wallet.updatedAt = new Date().toISOString();
+    db.wallets.set(req.user.userId, wallet);
+  }
+  
+  // For demo purposes, all payments succeed
+  payment.status = 'completed';
+  payment.paymentMethod = paymentMethod || payment.paymentMethod;
+  payment.completedAt = new Date().toISOString();
+  payment.updatedAt = new Date().toISOString();
+  payment.transactionId = `TXN${Date.now()}`;
+  
+  db.payments.set(id, payment);
+  
+  // Update ride payment status
+  const ride = db.rides.get(payment.rideId);
+  if (ride) {
+    ride.paymentStatus = 'completed';
+    ride.paymentMethod = paymentMethod;
+    db.rides.set(ride.id, ride);
+  }
+  
+  // Credit driver wallet (if exists)
+  if (payment.driverId) {
+    let driverWallet = db.wallets.get(payment.driverId);
+    if (!driverWallet) {
+      driverWallet = {
+        id: uuidv4(),
+        userId: payment.driverId,
+        balance: 0,
+        currency: 'INR',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+    }
+    // Driver gets 80% of fare
+    const driverEarning = payment.amount * 0.8;
+    driverWallet.balance += driverEarning;
+    driverWallet.updatedAt = new Date().toISOString();
+    db.wallets.set(payment.driverId, driverWallet);
+  }
+  
+  console.log(`💰 Payment ${id} processed: ₹${payment.amount} via ${paymentMethod}`);
+  
+  res.json({ success: true, payment });
+});
+
+// Get payment details
+app.get('/api/payments/:id', authMiddleware, (req, res) => {
+  const { id } = req.params;
+  
+  const payment = db.payments.get(id);
+  if (!payment) {
+    return res.status(404).json({ success: false, error: 'Payment not found' });
+  }
+  
+  res.json({ success: true, payment });
+});
+
+// Get payment history
+app.get('/api/payments', authMiddleware, (req, res) => {
+  const payments = [];
+  
+  for (const [id, payment] of db.payments) {
+    if (payment.riderId === req.user.userId || payment.driverId === req.user.userId) {
+      payments.push(payment);
+    }
+  }
+  
+  // Sort by date descending
+  payments.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  
+  res.json({ success: true, payments });
+});
+
+// Get available payment methods
+app.get('/api/payment-methods', authMiddleware, (req, res) => {
+  const methods = [
+    { id: 'cash', name: 'Cash', icon: 'money', enabled: true },
+    { id: 'upi', name: 'UPI', icon: 'qr_code', enabled: true },
+    { id: 'card', name: 'Credit/Debit Card', icon: 'credit_card', enabled: true },
+    { id: 'wallet', name: 'Raahi Wallet', icon: 'account_balance_wallet', enabled: true },
+  ];
+  
+  const wallet = db.wallets.get(req.user.userId);
+  
+  res.json({ 
+    success: true, 
+    methods,
+    walletBalance: wallet?.balance || 0,
   });
 });
 
@@ -873,27 +1528,56 @@ function matchDriverToRide(rideId) {
   const ride = db.rides.get(rideId);
   if (!ride || ride.status !== 'requested') return;
 
+  console.log(`🔍 Matching driver for ride ${rideId}, type: ${ride.rideType}`);
+
   // Find nearest available driver
   let nearestDriver = null;
   let minDistance = Infinity;
 
-  for (const [id, driver] of db.drivers) {
-    if (!driver.isAvailable || driver.status !== 'online') continue;
+  // Log available drivers
+  const availableDrivers = Array.from(db.drivers.values()).filter(d => d.isAvailable && d.status === 'online');
+  console.log(`   Available drivers: ${availableDrivers.length}`);
 
-    // Match by vehicle type if specified
+  for (const [id, driver] of db.drivers) {
+    console.log(`   Checking driver ${driver.name}: available=${driver.isAvailable}, status=${driver.status}, type=${driver.vehicleType}`);
+    
+    if (!driver.isAvailable || driver.status !== 'online') {
+      console.log(`   ❌ Driver ${driver.name} not available`);
+      continue;
+    }
+
+    // Match by vehicle type if specified (more flexible matching for demo)
     if (ride.rideType && ride.rideType !== 'any') {
       const typeMatch = {
-        bike: ['bike'],
-        economy: ['economy', 'comfort', 'premium'],
-        comfort: ['comfort', 'premium'],
+        bike: ['bike', 'economy'], // bikes can fulfill bike requests
+        bike_rescue: ['bike', 'economy', 'comfort'], // bike rescue accepts most
+        mini: ['mini', 'economy', 'comfort', 'premium'],
+        economy: ['economy', 'comfort', 'premium', 'sedan'],
+        sedan: ['sedan', 'economy', 'comfort', 'premium'],
+        comfort: ['comfort', 'premium', 'sedan'],
         premium: ['premium'],
-        xl: ['xl'],
+        suv: ['suv', 'xl'],
+        xl: ['xl', 'suv'],
+        personal_driver: ['economy', 'comfort', 'premium', 'sedan'], // any car
       };
-      if (!typeMatch[ride.rideType]?.includes(driver.vehicleType)) continue;
+      
+      const acceptableTypes = typeMatch[ride.rideType] || ['economy', 'comfort', 'premium', 'sedan']; // default fallback
+      if (!acceptableTypes.includes(driver.vehicleType)) {
+        console.log(`   ❌ Driver ${driver.name} type ${driver.vehicleType} doesn't match ${ride.rideType}`);
+        // For demo: skip type check if no drivers match
+        if (availableDrivers.length <= 3) {
+          console.log(`   ✅ Allowing type mismatch for demo (few drivers available)`);
+        } else {
+          continue;
+        }
+      }
     }
 
     const driverLoc = db.driverLocations.get(id) || driver.location;
-    if (!driverLoc) continue;
+    if (!driverLoc) {
+      console.log(`   ❌ Driver ${driver.name} has no location`);
+      continue;
+    }
 
     const distance = calculateDistance(
       ride.pickupLocation.lat,
@@ -901,6 +1585,8 @@ function matchDriverToRide(rideId) {
       driverLoc.lat,
       driverLoc.lng
     );
+
+    console.log(`   📍 Driver ${driver.name} is ${(distance/1000).toFixed(1)}km away`);
 
     if (distance < minDistance) {
       minDistance = distance;
@@ -1071,6 +1757,14 @@ server.listen(PORT, () => {
   console.log('   GET  /api/rides/:id');
   console.log('   PUT  /api/rides/:id/cancel');
   console.log('   POST /api/maps/fare-estimate');
+  console.log('   💳 Payment endpoints:');
+  console.log('   GET  /api/wallet');
+  console.log('   POST /api/wallet/add');
+  console.log('   POST /api/payments/create');
+  console.log('   POST /api/payments/:id/process');
+  console.log('   GET  /api/payments/:id');
+  console.log('   GET  /api/payments');
+  console.log('   GET  /api/payment-methods');
   console.log('');
   console.log('💡 Demo OTP: 123456 (works for any phone number)');
   console.log('🚀 ═══════════════════════════════════════════════════');

@@ -58,49 +58,27 @@ class Ride extends Equatable {
   });
 
   factory Ride.fromJson(Map<String, dynamic> json) {
-    // Handle both camelCase (backend) and snake_case field names
-    final pickupLoc = json['pickupLocation'] ?? json['pickup_location'];
-    final destLoc = json['destinationLocation'] ?? json['destination_location'];
-    final pickupAddr = json['pickupAddress'] ?? json['pickup_address'] ?? 'Pickup';
-    final destAddr = json['destinationAddress'] ?? json['destination_address'] ?? 'Destination';
-    
     return Ride(
       id: json['id'] as String,
-      riderId: (json['riderId'] ?? json['rider_id'] ?? '') as String,
-      driverId: (json['driverId'] ?? json['driver_id']) as String?,
-      pickupLocation: pickupLoc is Map<String, dynamic> 
-          ? AddressLocation.fromJson({...pickupLoc, 'address': pickupAddr})
-          : AddressLocation(latitude: 0, longitude: 0, address: pickupAddr),
-      destinationLocation: destLoc is Map<String, dynamic>
-          ? AddressLocation.fromJson({...destLoc, 'address': destAddr})
-          : AddressLocation(latitude: 0, longitude: 0, address: destAddr),
-      status: _parseStatus((json['status'] ?? 'requested') as String),
-      fare: (json['fare'] as num?)?.toDouble() ?? 0.0,
-      distance: (json['distance'] as num?)?.toDouble() ?? 0.0,
-      estimatedDuration: (json['estimatedDuration'] ?? json['estimated_duration'] ?? json['duration'] ?? 0) as int,
-      rideType: (json['rideType'] ?? json['ride_type'] ?? 'economy') as String,
-      paymentMethod: _parsePaymentMethod((json['paymentMethod'] ?? json['payment_method'] ?? 'cash') as String),
-      createdAt: _parseDateTime(json['createdAt'] ?? json['created_at']),
-      acceptedAt: _parseNullableDateTime(json['acceptedAt'] ?? json['accepted_at']),
-      startedAt: _parseNullableDateTime(json['startedAt'] ?? json['started_at']),
-      completedAt: _parseNullableDateTime(json['completedAt'] ?? json['completed_at']),
-      cancelledAt: _parseNullableDateTime(json['cancelledAt'] ?? json['cancelled_at']),
+      riderId: json['rider_id'] as String,
+      driverId: json['driver_id'] as String?,
+      pickupLocation: AddressLocation.fromJson(json['pickup_location'] as Map<String, dynamic>),
+      destinationLocation: AddressLocation.fromJson(json['destination_location'] as Map<String, dynamic>),
+      status: _parseStatus(json['status'] as String),
+      fare: (json['fare'] as num).toDouble(),
+      distance: (json['distance'] as num).toDouble(),
+      estimatedDuration: json['estimated_duration'] as int,
+      rideType: json['ride_type'] as String,
+      paymentMethod: _parsePaymentMethod(json['payment_method'] as String),
+      createdAt: DateTime.parse(json['created_at'] as String),
+      acceptedAt: json['accepted_at'] != null ? DateTime.parse(json['accepted_at'] as String) : null,
+      startedAt: json['started_at'] != null ? DateTime.parse(json['started_at'] as String) : null,
+      completedAt: json['completed_at'] != null ? DateTime.parse(json['completed_at'] as String) : null,
+      cancelledAt: json['cancelled_at'] != null ? DateTime.parse(json['cancelled_at'] as String) : null,
       rating: (json['rating'] as num?)?.toDouble(),
       notes: json['notes'] as String?,
       driver: json['driver'] != null ? Driver.fromJson(json['driver'] as Map<String, dynamic>) : null,
     );
-  }
-  
-  static DateTime _parseDateTime(dynamic value) {
-    if (value == null) return DateTime.now();
-    if (value is String) return DateTime.parse(value);
-    return DateTime.now();
-  }
-  
-  static DateTime? _parseNullableDateTime(dynamic value) {
-    if (value == null) return null;
-    if (value is String) return DateTime.parse(value);
-    return null;
   }
 
   Map<String, dynamic> toJson() {

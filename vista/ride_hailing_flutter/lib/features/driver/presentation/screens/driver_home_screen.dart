@@ -249,11 +249,11 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen> {
                   }
                 },
               ),
-              if (user != null && user.email != null)
+              if (user != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 12),
                   child: Text(
-                    user.email!,
+                    user.email,
                     style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
                   ),
                 ),
