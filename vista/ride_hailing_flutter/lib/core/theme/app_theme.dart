@@ -147,7 +147,7 @@ class AppTheme {
           color: AppColors.textHint,
         ),
       ),
-      cardTheme: CardTheme(
+      cardTheme: CardThemeData(
         color: AppColors.surface,
         elevation: 2,
         shadowColor: Colors.black.withOpacity(0.1),

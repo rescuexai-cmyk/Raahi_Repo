@@ -28,6 +28,15 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        
+        // Get Google Maps API key from dart-defines or use placeholder
+        val dartDefines = project.property("dart-defines")?.toString()
+        val googleMapsApiKey = dartDefines?.split(",")
+            ?.firstOrNull { it.startsWith("GOOGLE_MAPS_API_KEY=") }
+            ?.substringAfter("GOOGLE_MAPS_API_KEY=")
+            ?: "YOUR_API_KEY_HERE"
+        
+        manifestPlaceholders["GOOGLE_MAPS_API_KEY"] = googleMapsApiKey
     }
 
     buildTypes {
